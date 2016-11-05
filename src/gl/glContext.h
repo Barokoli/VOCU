@@ -9,10 +9,7 @@
 #define GLCONTEXT_H_
 
 #include <GLFW/glfw3.h>
-#include <iostream>
-#include <thread>
-
-using namespace std;
+#include <OpenGL/gl.h>
 
 void error_callback(int error, const char* description);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -20,11 +17,18 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 class Context{
 public:
 	GLFWwindow* window;
-	bool init_context(int x,int y,char *err);
+	int width,height;
+	bool init_context(int x,int y,char *err, void (*f)(int));
 	bool terminate_context();
 	void start_render_loop();
+	void draw();
+	void (*input_handle)(int);
 };
-bool Context::init_context(int x,int y,char *err){
+bool Context::init_context(int x,int y,char *err, void (*f)(int)){
+	width = x;
+	height = y;
+	input_handle = f;
+
 	if (!glfwInit())
 	{
 		err = (char*)"GLFW was unable to initialize.";
@@ -37,7 +41,8 @@ bool Context::init_context(int x,int y,char *err){
 	if (!window){
 		err = (char*)"Window or OpenGL context creation failed";
 	}
-	glfwSetKeyCallback(window, key_callback);
+	glfwSetKeyCallback(window,key_callback);
+	glfwSetWindowUserPointer(window, this);
 
 	return true;
 }
@@ -55,10 +60,33 @@ void Context::start_render_loop(){
 	std::cout << "GL Rendering." << std::endl;
 	glfwMakeContextCurrent(window);
 
+	double lastTime = glfwGetTime();
+	int nbFrames = 0;
+
 	while (!glfwWindowShouldClose(window)){
+		// Measure speed
+		double currentTime = glfwGetTime();
+		nbFrames++;
+		if ( currentTime - lastTime >= 1.0 ){
+			// printf and reset timer
+			printf("%f ms/frame\n", 1000.0/double(nbFrames));
+			nbFrames = 0;
+			lastTime += 1.0;
+		}
+		draw();
+		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 	std::cout << "GL Ended." << std::endl;
+}
+
+void Context::draw(){
+
+	glViewport(0, 0, width, height);
+	glClearColor(0.6,0.7,0.8,1);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	return;
 }
 
 void error_callback(int error, const char* description)
@@ -68,8 +96,15 @@ void error_callback(int error, const char* description)
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	Context * context = reinterpret_cast<Context *>(glfwGetWindowUserPointer(window));
+
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+
+    if (action == GLFW_PRESS){
+    	context->input_handle(key);
+    }
 }
 
 #endif /* GLCONTEXT_H_ */
