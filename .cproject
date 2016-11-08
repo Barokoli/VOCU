@@ -22,12 +22,18 @@
 						<toolChain id="com.nvidia.cuda.tools.toolchain.eight_zero.exe.debug.1113076011" name="CUDA Toolkit 8.0" superClass="com.nvidia.cuda.tools.toolchain.eight_zero.exe.debug">
 							<targetPlatform archList="all" binaryParser="com.nvidia.cuda.ide.elf;com.nvidia.cuda.ide.macho;com.nvidia.cuda.ide.cubin" id="com.nvidia.cuda.ide.targetPlatform.1172850525" isAbstract="false" name="Debug Platform" osList="linux,macosx" superClass="com.nvidia.cuda.ide.targetPlatform"/>
 							<builder buildPath="${workspace_loc:/VOCU}/Debug" id="com.nvidia.cuda.ide.builder.1802637437" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CUDA Toolkit 8.0 Builder" superClass="com.nvidia.cuda.ide.builder"/>
-							<tool id="nvcc.compiler.base.1003886017" name="NVCC Compiler" superClass="nvcc.compiler.base">
+							<tool command="nvcc" id="nvcc.compiler.base.1003886017" name="NVCC Compiler" superClass="nvcc.compiler.base">
 								<option id="nvcc.compiler.deviceDebug.159220370" name="Generate device debug information (-G)" superClass="nvcc.compiler.deviceDebug" value="true" valueType="boolean"/>
 								<option id="nvcc.compiler.option.level.830200628" name="Generate host debug information (-g)" superClass="nvcc.compiler.option.level" value="true" valueType="boolean"/>
 								<option defaultValue="nvcc.compiler.optimization.level.none" id="nvcc.compiler.optimization.level.1783859735" name="Optimization Level" superClass="nvcc.compiler.optimization.level" valueType="enumerated"/>
 								<option id="nvcc.compiler.pic.1398565740" name="Position Independent Code (-fPIC)" superClass="nvcc.compiler.pic"/>
 								<option id="nvcc.compiler.cpp11option.166214848" name="Enable C++11 support (-std=c++11)" superClass="nvcc.compiler.cpp11option" value="true" valueType="boolean"/>
+								<option id="nvcc.compiler.include.files.1316596060" name="Include files (-include)" superClass="nvcc.compiler.include.files" valueType="includeFiles"/>
+								<option id="nvcc.compiler.include.paths.1948068981" name="Include paths (-I)" superClass="nvcc.compiler.include.paths" valueType="includePath">
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/src/kernels}&quot;"/>
+								</option>
+								<option id="nvcc.compiler.undef.symbol.13270010" name="Undefined symbols (-U)" superClass="nvcc.compiler.undef.symbol" valueType="undefDefinedSymbols"/>
 								<inputType id="nvcc.compiler.input.cu.152393203" superClass="nvcc.compiler.input.cu"/>
 								<inputType id="nvcc.compiler.input.cpp.1683481524" superClass="nvcc.compiler.input.cpp"/>
 								<inputType id="nvcc.compiler.input.c.2071526491" superClass="nvcc.compiler.input.c"/>
@@ -36,9 +42,12 @@
 								<option id="nvcc.linker.option.other.1243319268" name="Other options (-Xlinker [option])" superClass="nvcc.linker.option.other" valueType="stringList">
 									<listOptionValue builtIn="false" value="-lglfw3"/>
 								</option>
-								<option id="nvcc.linker.option.libs.390309827" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs"/>
-								<option id="nvcc.linker.option.paths.643655351" name="Library search path (-L)" superClass="nvcc.linker.option.paths" valueType="libPaths"/>
-								<option id="nvcc.linker.option.linkgl.644061925" superClass="nvcc.linker.option.linkgl" value="true" valueType="boolean"/>
+								<option id="nvcc.linker.option.libs.390309827" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs">
+									<listOptionValue builtIn="false" value="curand"/>
+								</option>
+								<option id="nvcc.linker.option.paths.643655351" name="Library search path (-L)" superClass="nvcc.linker.option.paths"/>
+								<option id="nvcc.linker.option.linkgl.644061925" name="Link with OpenGL libraries" superClass="nvcc.linker.option.linkgl" value="true" valueType="boolean"/>
+								<option id="nvcc.linker.option.userobjs.1461344987" name="Other objects" superClass="nvcc.linker.option.userobjs" valueType="userObjs"/>
 								<inputType id="nvcc.linker.input.806249987" superClass="nvcc.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>

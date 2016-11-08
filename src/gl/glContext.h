@@ -64,11 +64,9 @@ void Context::start_render_loop(){
 	int nbFrames = 0;
 
 	while (!glfwWindowShouldClose(window)){
-		// Measure speed
 		double currentTime = glfwGetTime();
 		nbFrames++;
 		if ( currentTime - lastTime >= 1.0 ){
-			// printf and reset timer
 			printf("%f ms/frame\n", 1000.0/double(nbFrames));
 			nbFrames = 0;
 			lastTime += 1.0;

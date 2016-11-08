@@ -12,6 +12,8 @@
 #include <thread>
 #include <mutex>
 #include <queue>
+#include <curand.h>
+#include <curand_kernel.h>
 #include "memory.h"
 #include "task.h"
 
@@ -19,32 +21,36 @@ using namespace std;
 
 class DataIO {
 public:
-	DataIO(){
-		rng(2097152);
-	}
+	static const int max_threads = 4;
+	Task * enqueue(function<void()>);
+
+	void rng(int);
+	void work_on_queue(int me);
+	void wait(bool *cond,Task *task);
+	void init_dio();
+	int manage_threads();
+
 	~DataIO(){
+		std::cout << "destroying dio" << std::endl;
 		for(int i = 0; i < max_threads;i++){
 			if(thread_list[i].joinable()){
 				thread_list[i].join();
 			}
 		}
 	}
-	Task * enqueue(function<void()>);
-	void rng(int);
-	void work_on_queue(int me);
-	void wait(bool *cond,Task *task);
-	int manage_threads();
-	static const int max_threads = 4;
-
 private:
     mutex queue_mtx;
     mutex thread_mtx[max_threads];
 
     queue<Task> task_queue;
     thread thread_list[max_threads];
-    Memory random_numbers;
+    Memory<float> random_numbers;
     void work(void);
 };
+
+void DataIO::init_dio(){
+	rng(512);
+}
 
 void DataIO::work_on_queue(int me){
 	thread_mtx[me].lock();
@@ -74,9 +80,10 @@ int DataIO::manage_threads(){
 			}
 		}
 	}
+	return -1;
 }
 
-/*Wait till end of task. main thread freezes.*/
+/*Wait till end of task. Calling thread freezes.*/
 void DataIO::wait(bool *cond,Task *t){
 	cout << "started waiting for data" << endl;
 	if(!*cond){
@@ -89,7 +96,30 @@ void DataIO::wait(bool *cond,Task *t){
 }
 
 void DataIO::rng(int size){
+	curandGenerator_t gen;
+
 	cout << "Setting up Random Numbers" << endl;
+	new_cuda_mem<float>(&random_numbers,size);
+
+	/* Create pseudo-random number generator */
+	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+	/* Set seed */
+	curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
+	/* Generate n floats on device */
+	curandGenerateUniform(gen, random_numbers.d_data,(size_t) size);
+	/* Copy device memory to host */
+	random_numbers.memcpy_dth();
+
+	// check if kernel execution generated and error
+	getLastCudaError("Random Number Kernel execution failed");
+
+
+
+	// allocate mem for the result on host side
+	//float *h_odata = (float *) malloc(mem_size);
+	// copy result from device to host
+	//checkCudaErrors(cudaMemcpy(h_odata, d_odata, sizeof(float) * num_threads,
+	//						   cudaMemcpyDeviceToHost));
 }
 
 #endif /* DIO_H_ */

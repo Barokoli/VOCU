@@ -4,21 +4,26 @@
 #include "gl/glContext.h"
 #include "dio/dio.h"
 #include "dio/octree.h"
+#include "compute/kernel_manager.h"
 
 
 Context context;
 DataIO dio;
 Octree octreeData1;
+KernelManager kernel_manager;
 
 void context_input(int in);
 
 int main(int argc, char **argv)
 {
 	char* err;
+	kernel_manager.init_cuda_device(argc, (char **)argv);
+	dio.init_dio();
 	std::cout << "Initializing VOCU on Thread:" << std::this_thread::get_id() << std::endl;
 	if(!context.init_context(1080,720,err,context_input)){
 		std::cout << err << std::endl;
 	}
+
 	context.start_render_loop();
 	context.terminate_context();
 }
