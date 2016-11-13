@@ -16,6 +16,7 @@ public:
 	void init_cuda_device(int argc, char **argv);
 	int devID;
 	int devCount;
+	int max_threads;
 };
 
 void KernelManager::init_cuda_device(int argc, char **argv){
@@ -44,6 +45,11 @@ void KernelManager::init_cuda_device(int argc, char **argv){
 		std::cout << std::endl;
 	}
 	devID = findCudaDevice(argc, (const char **)argv);
+
+	cudaDeviceProp props;
+	cudaGetDeviceProperties(&props, devID);
+
+	max_threads = props.maxThreadsPerBlock;
 }
 
 

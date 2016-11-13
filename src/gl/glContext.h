@@ -18,20 +18,20 @@ class Context{
 public:
 	GLFWwindow* window;
 	int width,height;
-	bool init_context(int x,int y,char *err, void (*f)(int));
+	bool init_context(int x,int y, void (*f)(int));
 	bool terminate_context();
 	void start_render_loop();
 	void draw();
 	void (*input_handle)(int);
 };
-bool Context::init_context(int x,int y,char *err, void (*f)(int)){
+bool Context::init_context(int x,int y, void (*f)(int)){
 	width = x;
 	height = y;
 	input_handle = f;
 
 	if (!glfwInit())
 	{
-		err = (char*)"GLFW was unable to initialize.";
+		std::cout << "GLFW was unable to initialize." << std::endl;
 		return false;
 	}
 
@@ -39,7 +39,7 @@ bool Context::init_context(int x,int y,char *err, void (*f)(int)){
 
 	window = glfwCreateWindow(x, y, "VOCU", NULL, NULL);
 	if (!window){
-		err = (char*)"Window or OpenGL context creation failed";
+		std::cout << "Window or OpenGL context creation failed" << std::endl;
 	}
 	glfwSetKeyCallback(window,key_callback);
 	glfwSetWindowUserPointer(window, this);

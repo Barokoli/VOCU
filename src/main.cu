@@ -16,22 +16,24 @@ void context_input(int in);
 
 int main(int argc, char **argv)
 {
-	char* err;
 	kernel_manager.init_cuda_device(argc, (char **)argv);
-	dio.init_dio();
+	log_cuda_mem();
+	dio.init_dio(kernel_manager);
 	std::cout << "Initializing VOCU on Thread:" << std::this_thread::get_id() << std::endl;
-	if(!context.init_context(1080,720,err,context_input)){
-		std::cout << err << std::endl;
-	}
-
+	context.init_context(1080,720,context_input);
 	context.start_render_loop();
 	context.terminate_context();
 }
 
 void context_input(int in){
 	std::cout << "Context key input!" << std::endl;
-	if(in == GLFW_KEY_D){
-		Task *task = dio.enqueue([=](){ octreeData1.init_from_random(512);});
+	switch(in){
+	case GLFW_KEY_ESCAPE:
+		dio.free();
+		break;
+	case GLFW_KEY_D :
+		Task *task = dio.enqueue([=](){ octreeData1.init_from_random(&dio);});
 		//dio.wait(&octreeData1.calculated,task);
+		break;
 	}
 }

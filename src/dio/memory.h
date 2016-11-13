@@ -10,42 +10,69 @@
 
 #include "extern/helper_cuda.h"
 
+void log_cuda_mem(void);
+
 template <class T>
 class Memory{
 public:
-	int size;
+	size_t size;
 	int gl_id;
 	T *h_data;
 	T *d_data;
 
 	void memcpy_dth(void);
 	void memcpy_htd(void);
+	void mem_free(void);
 
 	~Memory(){
 		if(h_data)
 			free(h_data);
 		if(d_data)
 			checkCudaErrors(cudaFree(d_data));
-		std::cout << "Memory freed" << std::endl;
 	}
 };
 
 template <class T>
-void new_cuda_mem(Memory<T> *mem,int size){
+void new_cuda_mem(Memory<T> *mem,size_t size){
 	mem->size = size;
-	mem->h_data = (T *) malloc(size);
-
-	checkCudaErrors(cudaMalloc((void **) &(mem->d_data), size*sizeof(T)));
+	mem->h_data = (T *) malloc(size * sizeof(T));
+	checkCudaErrors(cudaMalloc((void **) &(mem->d_data), size * sizeof(T)));
 }
 
 template <class T>
 void Memory<T>::memcpy_dth(){
-	cudaMemcpy(&h_data, &d_data, size * sizeof(T), cudaMemcpyDeviceToHost);
+	checkCudaErrors(cudaMemcpy((void*) h_data,(const void*) d_data, (size_t) size * sizeof(T), cudaMemcpyDeviceToHost));
 }
 
 template <class T>
 void Memory<T>::memcpy_htd(){
-	cudaMemcpy(&d_data, &h_data, size * sizeof(T), cudaMemcpyHostToDevice);
+	checkCudaErrors(cudaMemcpy(&d_data, &h_data, size * sizeof(T), cudaMemcpyHostToDevice));
+}
+
+template <class T>
+void Memory<T>::mem_free(){
+	if(h_data)
+		free(h_data);
+	if(d_data)
+		checkCudaErrors(cudaFree(d_data));
+	h_data = NULL;
+	d_data = NULL;
+	std::cout << "Memory freed" << std::endl;
+}
+
+void log_cuda_mem(){
+	size_t free_byte ;
+	size_t total_byte ;
+	cudaError_t cuda_status = cudaMemGetInfo( &free_byte, &total_byte ) ;
+
+	if ( cudaSuccess != cuda_status ){
+		printf("Error: cudaMemGetInfo fails, %s \n", cudaGetErrorString(cuda_status) );
+		exit(1);
+	}
+	double free_db = (double)free_byte ;
+	double total_db = (double)total_byte ;
+	double used_db = total_db - free_db ;
+	printf("GPU memory usage: used = %f, free = %f MB, total = %f MB\n", used_db/1024.0/1024.0, free_db/1024.0/1024.0, total_db/1024.0/1024.0);
 }
 
 #endif /* MEMORY_H_ */

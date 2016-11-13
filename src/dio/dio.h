@@ -16,23 +16,27 @@
 #include <curand_kernel.h>
 #include "memory.h"
 #include "task.h"
+#include "misc.h"
 
 using namespace std;
 
 class DataIO {
 public:
-	static const int max_threads = 4;
+	static const int max_cpu_threads = 4;
 	Task * enqueue(function<void()>);
+	Memory<float> random_numbers;
+	Memory<int> tmp_bulkstorage; //32 -> 64 bit pointer?
 
-	void rng(int);
+	void rng(int,unsigned long long seed);
 	void work_on_queue(int me);
 	void wait(bool *cond,Task *task);
-	void init_dio();
+	void init_dio(KernelManager k_manager);
+	void free(void);
 	int manage_threads();
 
 	~DataIO(){
 		std::cout << "destroying dio" << std::endl;
-		for(int i = 0; i < max_threads;i++){
+		for(int i = 0; i < max_cpu_threads;i++){
 			if(thread_list[i].joinable()){
 				thread_list[i].join();
 			}
@@ -40,16 +44,16 @@ public:
 	}
 private:
     mutex queue_mtx;
-    mutex thread_mtx[max_threads];
+    mutex thread_mtx[max_cpu_threads];
 
     queue<Task> task_queue;
-    thread thread_list[max_threads];
-    Memory<float> random_numbers;
+    thread thread_list[max_cpu_threads];
     void work(void);
 };
 
-void DataIO::init_dio(){
-	rng(512);
+void DataIO::init_dio(KernelManager k_manager){
+	rng(2097152,4242ULL);
+	new_cuda_mem<int>(&tmp_bulkstorage,rec_chunk_size_cubed(k_manager));
 }
 
 void DataIO::work_on_queue(int me){
@@ -72,7 +76,7 @@ Task * DataIO::enqueue(function<void()> func){
 
 int DataIO::manage_threads(){
 	if(!task_queue.empty()){
-		for(int i = 0; i < max_threads;i++){
+		for(int i = 0; i < max_cpu_threads;i++){
 			if(!thread_list[i].joinable()){
 				cout << "Starting thread." << endl;
 				thread_list[i] = thread(&DataIO::work_on_queue,this,i);
@@ -95,31 +99,35 @@ void DataIO::wait(bool *cond,Task *t){
 	cout << "data finished" << endl;
 }
 
-void DataIO::rng(int size){
+void DataIO::rng(int size, unsigned long long seed){
 	curandGenerator_t gen;
 
-	cout << "Setting up Random Numbers" << endl;
+	clock_t begin = clock();
 	new_cuda_mem<float>(&random_numbers,size);
 
 	/* Create pseudo-random number generator */
 	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
 	/* Set seed */
-	curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
+	curandSetPseudoRandomGeneratorSeed(gen, seed);
 	/* Generate n floats on device */
 	curandGenerateUniform(gen, random_numbers.d_data,(size_t) size);
 	/* Copy device memory to host */
+
+	cudaDeviceSynchronize();
+
 	random_numbers.memcpy_dth();
 
-	// check if kernel execution generated and error
-	getLastCudaError("Random Number Kernel execution failed");
+	cudaDeviceSynchronize();
 
+	clock_t end = clock();
+	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC * 1000;
 
+	cout << size << " Random Numbers created in: " << elapsed_secs << "ms (cpu/gpu time)"<< endl;
+}
 
-	// allocate mem for the result on host side
-	//float *h_odata = (float *) malloc(mem_size);
-	// copy result from device to host
-	//checkCudaErrors(cudaMemcpy(h_odata, d_odata, sizeof(float) * num_threads,
-	//						   cudaMemcpyDeviceToHost));
+void DataIO::free(){
+	random_numbers.mem_free();
+	tmp_bulkstorage.mem_free();
 }
 
 #endif /* DIO_H_ */
