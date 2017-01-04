@@ -50,6 +50,8 @@ void KernelManager::init_cuda_device(int argc, char **argv){
 	cudaGetDeviceProperties(&props, devID);
 
 	max_threads = props.maxThreadsPerBlock;
+
+	cudaChooseDevice(&devID,&props);
 }
 
 

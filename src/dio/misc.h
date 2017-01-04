@@ -8,7 +8,7 @@
 #ifndef MISC_H_
 #define MISC_H_
 
-#define CHUNK_SIZE 512
+#define CHUNK_SIZE 256
 #define CHUNK_SIZE_3 CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE
 
 #include <math.h>

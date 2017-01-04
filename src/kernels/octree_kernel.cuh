@@ -11,9 +11,11 @@
 #define META_MASK 		0xC0000000
 #define INV_META_MASK	0x3FFFFFFF
 #define NODE_MASK 		0x80000000
+#define FILL_MASK 		0x40000000
 
 int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size);
 
+//First Stage:
 __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_count,int noise_size,int x_off,int y_off,int z_off){
 	const int3 global_size = make_int3(blockDim.x*gridDim.x,
 			blockDim.y*gridDim.y,
@@ -42,12 +44,15 @@ __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_coun
 	int a,b,c,d,e,f,g,h;//block pairs of 8
 
 	//Octree space Global 1D ID | Conversion from 3D Grid-space to 1D index
-	int globId =	(
+	/*int globId =	(
 						(x>>1)
 						+ ((y>>1)*global_size.x)>>1
 						+ ((z>>1)*global_size.x*global_size.y)>>2
 					)*8
-					+ (x%2+((y%2)<<1)+((z%2)<<2));
+					+ (x%2+((y%2)<<1)+((z%2)<<2));*/
+
+	int globId = ((((int)(x*0.5f)) + (int)((int)y*0.5f)*global_size.x*0.5f + (int)((int)z*0.5f)*global_size.x*global_size.y*0.25f))*8 + (x%2+((y%2)*2)+((z%2)*4));
+
 
 	a = GetBlock(x*2+x_off  ,y*2+y_off  ,z*2+z_off  ,rn,noise_count,noise_size);
 	b = GetBlock(x*2+x_off+1,y*2+y_off  ,z*2+z_off  ,rn,noise_count,noise_size);
@@ -85,7 +90,7 @@ __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_coun
 
 //0-127 = leer | 128-255 = voll
 __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size){
-
+	return 255;
     int xf,yf,zf,xpf,ypf,zpf,nSsqr;
     nSsqr = noise_size*noise_size;
     float xv,yv,zv;
@@ -120,7 +125,21 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
 		f = rn[xpf+yf *noise_size+zpf*nSsqr];
 		g = rn[xf +ypf*noise_size+zpf*nSsqr];
 		h = rn[xpf+ypf*noise_size+zpf*nSsqr];
-		value += noise_layer_weight.x*(zv*(a*xv+b*(1.0f-xv))+(1.0f-zv)*(c*yv+d*(1.0f-yv)));
+		//Trilinear Interpolation
+		value += noise_layer_weight.x*(
+					zv*(
+							yv*(xv*a+(1.0f-xv)*b)
+							+
+							(1.0f-yv)*(xv*c+(1.0f-xv)*d)
+						)
+					+
+					(1.0f-zv)*(
+							yv*(xv*e+(1.0f-xv)*f)
+							+
+							(1.0f-yv)*(xv*g+(1.0f-xv)*h)
+						)
+				);
+				//(zv*(a*xv+b*(1.0f-xv))+(1.0f-zv)*(c*yv+d*(1.0f-yv)));
 		value = ((float)((float)(127-z)/64.0f)-1.0f)+value*0.2;
     }
 
@@ -129,6 +148,65 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
     value = value < 0.5f?-1.0f:value;
 
     return (int)(127.5f*(value+1.0f));
+}
+
+//Second Stage
+__global__ void k_build_tree(int* bulk_storage, int Off){//init with 8th of kernels
+	const int3 global_size = make_int3(blockDim.x*gridDim.x,
+			blockDim.y*gridDim.y,
+			blockDim.z*gridDim.z);
+
+	//1D Block ID
+	const int blockId = blockIdx.x
+			+ blockIdx.y * gridDim.x
+			+ gridDim.x * gridDim.y * blockIdx.z;
+
+	//1D Coords 8th of Octree (skips every second in each dimension) Grid-space
+	const int global_id = blockId * (blockDim.x * blockDim.y * blockDim.z)
+			+ (threadIdx.z * (blockDim.x * blockDim.y))
+			+ (threadIdx.y * blockDim.x)
+			+ threadIdx.x;
+
+	//3D Coords 8th
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    int a,b,c,d,e,f,g,h;
+
+    int id = (x+y*global_size.x+z*global_size.x*global_size.y)*8;
+
+    int globId = ((((int)(x*0.5f)) + (int)((int)y*0.5f)*global_size.x*0.5f + (int)((int)z*0.5f)*global_size.x*global_size.y*0.25f))*8 + (x%2+((y%2)*2)+((z%2)*4));
+
+    int cubeSize = global_size.x*global_size.y*global_size.z;
+
+    a = bulk_storage[Off+id  ];
+    b = bulk_storage[Off+id+1];
+    c = bulk_storage[Off+id+2];
+    d = bulk_storage[Off+id+3];
+    e = bulk_storage[Off+id+4];
+    f = bulk_storage[Off+id+5];
+    g = bulk_storage[Off+id+6];
+    h = bulk_storage[Off+id+7];
+
+    if(a == b &&a == c &&a == d &&a == e &&a == f &&a == g &&a == h&&(a&FILL_MASK)!=0){ //TODO:META_MASK?
+    	bulk_storage[Off+id  ] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+1] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+2] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+3] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+4] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+5] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+6] = (int) EMPTY_MASK;
+    	bulk_storage[Off+id+7] = (int) EMPTY_MASK;
+
+    	bulk_storage[Off+(cubeSize<<3)+globId] = (int) (META_MASK)|(INV_META_MASK&a);
+    }else{
+    	bulk_storage[Off+(cubeSize<<3)+globId] = (int) (NODE_MASK)|(INV_META_MASK&(Off+id));
+    }
+}
+
+__global__ void k_blelloch_scan(){
+
 }
 
 

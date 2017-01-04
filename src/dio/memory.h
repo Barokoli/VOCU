@@ -36,6 +36,7 @@ template <class T>
 void new_cuda_mem(Memory<T> *mem,size_t size){
 	mem->size = size;
 	mem->h_data = (T *) malloc(size * sizeof(T));
+	std::cout << size * sizeof(T) << std::endl;
 	checkCudaErrors(cudaMalloc((void **) &(mem->d_data), size * sizeof(T)));
 }
 
@@ -51,6 +52,7 @@ void Memory<T>::memcpy_htd(){
 
 template <class T>
 void Memory<T>::mem_free(){
+	std::cout << "Mem size to be freed: " << size << std::endl;
 	if(h_data)
 		free(h_data);
 	if(d_data)
