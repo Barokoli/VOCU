@@ -12,6 +12,8 @@
 #define INV_META_MASK	0x3FFFFFFF
 #define NODE_MASK 		0x80000000
 #define FILL_MASK 		0x40000000
+#define NUM_BANKS 32
+#define LOG_NUM_BANKS 5
 
 int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size);
 
@@ -90,7 +92,6 @@ __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_coun
 
 //0-127 = leer | 128-255 = voll
 __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size){
-	return 255;
     int xf,yf,zf,xpf,ypf,zpf,nSsqr;
     nSsqr = noise_size*noise_size;
     float xv,yv,zv;
@@ -205,8 +206,72 @@ __global__ void k_build_tree(int* bulk_storage, int Off){//init with 8th of kern
     }
 }
 
-__global__ void k_blelloch_scan(){
+//based on: http://developer.download.nvidia.com/compute/cuda/1.1-Beta/x86_website/projects/scan/doc/scan.pdf
+__global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
+	extern __shared__ int shared_mem[];
 
+	int thread_id_2 = threadIdx.x*2;
+	//1D Index
+	int block_off = blockIdx.x*blockDim.x;
+	int glob_id = threadIdx.x+block_off;
+	int offset = 1;
+	int sum;
+	int dim = blockDim.x*2;
+
+	if(glob_id*2 >= nullMem){
+		bulk_storage[glob_id*2] = 0;
+		bulk_storage[glob_id*2+1] = 0;
+	}
+	//fill shared Memory 2-way Bank conflict (unavoidable?)
+	shared_mem[thread_id_2] = (bulk_storage[glob_id*2]&META_MASK)!=0?1:0;
+	shared_mem[thread_id_2+1] = (bulk_storage[glob_id*2+1]&META_MASK)!=0?1:0;
+
+	for(int d = blockDim.x; d > 0; d >>= 1){
+		__syncthreads();
+
+		if(threadIdx.x < d){
+			int ai = (thread_id_2+1)*offset-1;
+			int bi = (thread_id_2+2)*offset-1;
+			shared_mem[bi] += shared_mem[ai];
+		}
+		offset <<= 1;
+	}
+
+	if(threadIdx.x == 0) {
+		shared_mem[dim*2] = shared_mem[dim-1];
+		shared_mem[dim-1] = 0;
+	}
+
+	for(int d = 1; d <= blockDim.x; d <<= 1){
+		offset >>= 1;
+		__syncthreads();
+
+		if(threadIdx.x < d){
+			int ai = (thread_id_2+1)*offset-1;
+			int bi = (thread_id_2+2)*offset-1;
+
+			int t = shared_mem[ai];
+			shared_mem[ai] = shared_mem[bi];
+			shared_mem[bi] += t;
+		}
+	}
+	__syncthreads();
+
+	//Rearrange Array
+	//Either load copy from global mem to shared coalesced write Random or Read Random write coalesced | Writing coalesced is supposed to be quicker due to easier caching
+	//fill shared Memory 2-way Bank conflict (unavoidable?)
+	shared_mem[dim+thread_id_2] = bulk_storage[block_off+shared_mem[thread_id_2]];
+	shared_mem[dim+thread_id_2+1] = bulk_storage[block_off+shared_mem[thread_id_2+1]];
+
+	__syncthreads();
+	bulk_storage[block_off+thread_id_2] = shared_mem[dim+thread_id_2];
+	bulk_storage[block_off+thread_id_2+1] = shared_mem[dim+thread_id_2+1];
+
+	__syncthreads();
+	if(threadIdx.x == 0) {
+		bulk_storage[block_off+blockDim.x-1] = shared_mem[dim-1] < (dim-1) ? shared_mem[dim*2] : bulk_storage[block_off+blockDim.x-1];
+	}
+	//last element is equal to element count if not full
 }
 
 
