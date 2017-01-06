@@ -212,19 +212,19 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 
 	int thread_id_2 = threadIdx.x*2;
 	//1D Index
-	int block_off = blockIdx.x*blockDim.x;
-	int glob_id = threadIdx.x+block_off;
+	int block_off = blockIdx.x*blockDim.x*2;
+	int glob_id_2 = (threadIdx.x*2+block_off);
 	int offset = 1;
-	int sum;
 	int dim = blockDim.x*2;
 
-	if(glob_id*2 >= nullMem){
-		bulk_storage[glob_id*2] = 0;
-		bulk_storage[glob_id*2+1] = 0;
+	if(glob_id_2 >= nullMem){
+		bulk_storage[glob_id_2] = 0;
+		bulk_storage[glob_id_2+1] = 0;
 	}
+
 	//fill shared Memory 2-way Bank conflict (unavoidable?)
-	shared_mem[thread_id_2] = (bulk_storage[glob_id*2]&META_MASK)!=0?1:0;
-	shared_mem[thread_id_2+1] = (bulk_storage[glob_id*2+1]&META_MASK)!=0?1:0;
+	shared_mem[thread_id_2] = (bulk_storage[glob_id_2]&META_MASK)!=0?1:0;
+	shared_mem[thread_id_2+1] = (bulk_storage[glob_id_2+1]&META_MASK)!=0?1:0;
 
 	for(int d = blockDim.x; d > 0; d >>= 1){
 		__syncthreads();
@@ -269,9 +269,36 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 
 	__syncthreads();
 	if(threadIdx.x == 0) {
-		bulk_storage[block_off+blockDim.x-1] = shared_mem[dim-1] < (dim-1) ? shared_mem[dim*2] : bulk_storage[block_off+blockDim.x-1];
+		bulk_storage[block_off+blockDim.x*2-1] = shared_mem[dim-1] < (dim-1) ? shared_mem[dim*2] : bulk_storage[block_off+blockDim.x*2-1];
 	}
 	//last element is equal to element count if not full
+}
+
+__global__ void k_copy_packed_mem(int *bulk_storage,int *res_mem){
+	int block_off = blockIdx.x*blockDim.x*2;
+	int local_thread_id = threadIdx.x*2;
+	int thread_id = block_off+local_thread_id;
+	int block_size = blockDim.x*2;
+	int last = bulk_storage[block_off+block_size-1];
+	if((last&META_MASK) > 0){
+		return;
+	}else{
+		int v1 = bulk_storage[thread_id];
+		int v2 = bulk_storage[thread_id+1];
+		if((v1&META_MASK) > 0){
+			res_mem[last+local_thread_id] = v1;
+			if((v2&META_MASK) > 0){
+				res_mem[last+local_thread_id+1] = v2;
+			}
+		}
+	}
+	int reverse_step = block_off-block_size;
+	while(reverse_step > 0 && (bulk_storage[reverse_step+block_size-1]&META_MASK) > 0){
+		last -= block_size;
+		res_mem[last+local_thread_id] = bulk_storage[reverse_step+thread_id];
+		res_mem[last+local_thread_id+1] = bulk_storage[reverse_step+thread_id+1];
+		reverse_step -= block_size;
+	}
 }
 
 
@@ -279,7 +306,7 @@ __global__ void testKernel(float *g_idata, float *g_odata)
 {
     // shared memory
     // the size is determined by the host application
-    extern  __shared__  float sdata[];
+    extern __shared__ float sdata[];
 
     // access thread id
     const unsigned int tid = threadIdx.x;

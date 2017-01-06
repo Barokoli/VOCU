@@ -29,6 +29,7 @@ void context_input(int in){
 	std::cout << "Context key input!" << std::endl;
 	switch(in){
 	case GLFW_KEY_ESCAPE:
+		octreeData1.free();
 		dio.free();
 		break;
 	case GLFW_KEY_D :

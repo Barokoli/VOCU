@@ -36,7 +36,7 @@ template <class T>
 void new_cuda_mem(Memory<T> *mem,size_t size){
 	mem->size = size;
 	mem->h_data = (T *) malloc(size * sizeof(T));
-	std::cout << size * sizeof(T) << std::endl;
+	//std::cout << size * sizeof(T) << std::endl;
 	checkCudaErrors(cudaMalloc((void **) &(mem->d_data), size * sizeof(T)));
 }
 
@@ -47,19 +47,18 @@ void Memory<T>::memcpy_dth(){
 
 template <class T>
 void Memory<T>::memcpy_htd(){
-	checkCudaErrors(cudaMemcpy(&d_data, &h_data, size * sizeof(T), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy((void*) d_data, (const void*) h_data, (size_t) size * sizeof(T), cudaMemcpyHostToDevice));
 }
 
 template <class T>
 void Memory<T>::mem_free(){
-	std::cout << "Mem size to be freed: " << size << std::endl;
+	std::cout << "free mem: " << size << std::endl;
 	if(h_data)
 		free(h_data);
 	if(d_data)
 		checkCudaErrors(cudaFree(d_data));
 	h_data = NULL;
 	d_data = NULL;
-	std::cout << "Memory freed" << std::endl;
 }
 
 void log_cuda_mem(){

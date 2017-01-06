@@ -15,7 +15,7 @@
 #include "compute/kernel_manager.h"
 
 int toCube(int n,KernelManager k_manager){
-    return (int)ceil((float)n/(float)k_manager.max_threads)*k_manager.max_threads;
+    return (int)ceil((float)n/(float)(k_manager.max_threads*2))*k_manager.max_threads*2;
 }
 
 int rec_chunk_size(){
