@@ -15,7 +15,7 @@
 #define NUM_BANKS 32
 #define LOG_NUM_BANKS 5
 
-int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size);
+__device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size);
 
 //First Stage:
 __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_count,int noise_size,int x_off,int y_off,int z_off){
@@ -92,31 +92,35 @@ __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_coun
 
 //0-127 = leer | 128-255 = voll
 __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size){
-    int xf,yf,zf,xpf,ypf,zpf,nSsqr;
+	//return x;
+	//return z > 127 ? 0 : 255;
+	int xf,yf,zf,xpf,ypf,zpf,nSsqr;
     nSsqr = noise_size*noise_size;
     float xv,yv,zv;
     float value = 0.0f;
-    float3 noise_layers = make_float3(20.0f,4.0f,1.0f);
-    float3 noise_layer_weight = make_float3(40.0f,15.0f,1.2f);
+    float noise_values[6] = {	35.0f,0.7f,
+    							13.0f,0.2f,
+    							5.00f,0.1f};
 
     //Layer the different noises to get an interesting surface
-    for(int noiseLayer = 0; noiseLayer < 3; noiseLayer++){
+    for(int noiseLayer = 0; noiseLayer < noise_count; noiseLayer++){
     	//Trilinear filtering
-		xv = (float)x/((float)noise_size*noise_layers.x);//*7.654321f;
-		yv = (float)y/((float)noise_size*noise_layers.x);//*7.654321f;
-		zv = (float)z/((float)noise_size*noise_layers.x);//*7.654321f;
+		xv = fmod((float)x/((float)noise_values[noiseLayer*2]),(float)noise_size);//*7.654321f;
+		yv = fmod((float)y/((float)noise_values[noiseLayer*2]),(float)noise_size);//*7.654321f;
+		zv = fmod((float)z/((float)noise_values[noiseLayer*2]),(float)noise_size);//*7.654321f;
+
 		xf = floor(xv);
 		yf = floor(yv);
 		zf = floor(zv);
-		xv -= xf;
-		yv -= yf;
-		zv -= zf;
-		xf = xv*(float)noise_size;
-		yf = yv*(float)noise_size;
-		zf = zv*(float)noise_size;
+
+		xv = xv-(float)xf;
+		yv = yv-(float)yf;
+		zv = zv-(float)zf;
+
 		xpf = xf<(noise_size-1)?xf+1:0;
 		ypf = yf<(noise_size-1)?yf+1:0;
 		zpf = zf<(noise_size-1)?zf+1:0;
+
 		float a,b,c,d,e,f,g,h;
 		a = rn[xf +yf *noise_size+zf *nSsqr];
 		b = rn[xpf+yf *noise_size+zf *nSsqr];
@@ -127,28 +131,31 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
 		g = rn[xf +ypf*noise_size+zpf*nSsqr];
 		h = rn[xpf+ypf*noise_size+zpf*nSsqr];
 		//Trilinear Interpolation
-		value += noise_layer_weight.x*(
-					zv*(
-							yv*(xv*a+(1.0f-xv)*b)
+		value += noise_values[noiseLayer*2+1]*(
+						(1.0f-zv)*(
+							yv*(xv*b+(1.0f-xv)*a)
 							+
-							(1.0f-yv)*(xv*c+(1.0f-xv)*d)
+							(1.0f-yv)*(xv*d+(1.0f-xv)*c)
 						)
-					+
-					(1.0f-zv)*(
-							yv*(xv*e+(1.0f-xv)*f)
+						+
+						zv*(
+							yv*(xv*f+(1.0f-xv)*e)
 							+
-							(1.0f-yv)*(xv*g+(1.0f-xv)*h)
+							(1.0f-yv)*(xv*h+(1.0f-xv)*g)
 						)
-				);
-				//(zv*(a*xv+b*(1.0f-xv))+(1.0f-zv)*(c*yv+d*(1.0f-yv)));
-		value = ((float)((float)(127-z)/64.0f)-1.0f)+value*0.2;
-    }
+					);
 
+		//value += xv*b+(1.0f-xv)*a;
+				//(zv*(a*xv+b*(1.0f-xv))+(1.0f-zv)*(c*yv+d*(1.0f-yv)));
+		//value = value*0.1f;//((float)((float)(127-z)/64.0f)-1.0f);//+value*0.1;
+		//value = a;
+    }
+    value += 1.0f-((float)z/128.0f);
     //Clamping
     value = value >= 0.5f?1.0f:value;
-    value = value < 0.5f?-1.0f:value;
+    value = value < 0.5f?0.0f:value;
 
-    return (int)(127.5f*(value+1.0f));
+    return (int)(127.5f*(value*2.0f));
 }
 
 //Second Stage
@@ -207,7 +214,7 @@ __global__ void k_build_tree(int* bulk_storage, int Off){//init with 8th of kern
 }
 
 //based on: http://developer.download.nvidia.com/compute/cuda/1.1-Beta/x86_website/projects/scan/doc/scan.pdf
-__global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
+__global__ void k_blelloch_scan_and_pack(int* bulk_storage,int* scan_mem,int nullMem){
 	extern __shared__ int shared_mem[];
 
 	int thread_id_2 = threadIdx.x*2;
@@ -216,6 +223,7 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 	int glob_id_2 = (threadIdx.x*2+block_off);
 	int offset = 1;
 	int dim = blockDim.x*2;
+	int total_sum = 0;
 
 	if(glob_id_2 >= nullMem){
 		bulk_storage[glob_id_2] = 0;
@@ -223,8 +231,8 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 	}
 
 	//fill shared Memory 2-way Bank conflict (unavoidable?)
-	shared_mem[thread_id_2] = (bulk_storage[glob_id_2]&META_MASK)!=0?1:0;
-	shared_mem[thread_id_2+1] = (bulk_storage[glob_id_2+1]&META_MASK)!=0?1:0;
+	shared_mem[thread_id_2] = (bulk_storage[glob_id_2]&META_MASK)?1:0;
+	shared_mem[thread_id_2+1] = (bulk_storage[glob_id_2+1]&META_MASK)?1:0;
 
 	for(int d = blockDim.x; d > 0; d >>= 1){
 		__syncthreads();
@@ -238,7 +246,8 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 	}
 
 	if(threadIdx.x == 0) {
-		shared_mem[dim*2] = shared_mem[dim-1];
+		total_sum = shared_mem[dim-1];
+		//shared_mem[dim*2] = shared_mem[dim-1];
 		shared_mem[dim-1] = 0;
 	}
 
@@ -257,47 +266,53 @@ __global__ void k_blelloch_scan_and_pack(int* bulk_storage,int nullMem){
 	}
 	__syncthreads();
 
+	//write to scan memory
+	scan_mem[glob_id_2] = shared_mem[thread_id_2];
+	scan_mem[glob_id_2+1] = shared_mem[thread_id_2+1];
+
+	if(threadIdx.x == 0){
+		scan_mem[block_off] = total_sum;
+	}
+
 	//Rearrange Array
 	//Either load copy from global mem to shared coalesced write Random or Read Random write coalesced | Writing coalesced is supposed to be quicker due to easier caching
 	//fill shared Memory 2-way Bank conflict (unavoidable?)
-	shared_mem[dim+thread_id_2] = bulk_storage[block_off+shared_mem[thread_id_2]];
+	/*shared_mem[dim+thread_id_2] = bulk_storage[block_off+shared_mem[thread_id_2]];
 	shared_mem[dim+thread_id_2+1] = bulk_storage[block_off+shared_mem[thread_id_2+1]];
 
 	__syncthreads();
 	bulk_storage[block_off+thread_id_2] = shared_mem[dim+thread_id_2];
-	bulk_storage[block_off+thread_id_2+1] = shared_mem[dim+thread_id_2+1];
+	bulk_storage[block_off+thread_id_2+1] = shared_mem[dim+thread_id_2+1];*/
 
-	__syncthreads();
+	/*__syncthreads();
 	if(threadIdx.x == 0) {
 		bulk_storage[block_off+blockDim.x*2-1] = shared_mem[dim-1] < (dim-1) ? shared_mem[dim*2] : bulk_storage[block_off+blockDim.x*2-1];
-	}
+	}*/
 	//last element is equal to element count if not full
 }
 
-__global__ void k_copy_packed_mem(int *bulk_storage,int *res_mem){
+__global__ void k_copy_packed_mem(int *bulk_storage,int *scan_mem,int *res_mem){
 	int block_off = blockIdx.x*blockDim.x*2;
 	int local_thread_id = threadIdx.x*2;
 	int thread_id = block_off+local_thread_id;
-	int block_size = blockDim.x*2;
-	int last = bulk_storage[block_off+block_size-1];
-	if((last&META_MASK) > 0){
-		return;
-	}else{
-		int v1 = bulk_storage[thread_id];
-		int v2 = bulk_storage[thread_id+1];
-		if((v1&META_MASK) > 0){
-			res_mem[last+local_thread_id] = v1;
-			if((v2&META_MASK) > 0){
-				res_mem[last+local_thread_id+1] = v2;
-			}
-		}
+	//int block_size = blockDim.x*2;
+	int off = scan_mem[block_off];//bulk_storage[block_off+block_size-1];
+
+	int v1 = bulk_storage[thread_id];
+	int v2 = bulk_storage[thread_id+1];
+
+	if(threadIdx.x != 0){
+		scan_mem[thread_id] += off;
+		scan_mem[thread_id+1] += off;
 	}
-	int reverse_step = block_off-block_size;
-	while(reverse_step > 0 && (bulk_storage[reverse_step+block_size-1]&META_MASK) > 0){
-		last -= block_size;
-		res_mem[last+local_thread_id] = bulk_storage[reverse_step+thread_id];
-		res_mem[last+local_thread_id+1] = bulk_storage[reverse_step+thread_id+1];
-		reverse_step -= block_size;
+
+	__syncthreads();
+
+	if(v1&META_MASK){
+		res_mem[scan_mem[thread_id]] = (v1&FILL_MASK) ? v1 : (scan_mem[(v1&INV_META_MASK)]|NODE_MASK);
+	}
+	if(v2&META_MASK){
+		res_mem[scan_mem[thread_id+1]] = (v2&FILL_MASK) ? v2 : (scan_mem[(v2&INV_META_MASK)]|NODE_MASK);
 	}
 }
 

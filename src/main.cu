@@ -33,7 +33,7 @@ void context_input(int in){
 		dio.free();
 		break;
 	case GLFW_KEY_D :
-		Task *task = dio.enqueue([=](){ octreeData1.init_from_random(&dio,kernel_manager.max_threads);});
+		Task *task = dio.enqueue([=](){context.objects_to_draw = octreeData1.init_from_random(&dio,kernel_manager.max_threads);});
 		//dio.wait(&octreeData1.calculated,task);
 		break;
 	}

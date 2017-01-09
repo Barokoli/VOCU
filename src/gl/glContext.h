@@ -8,6 +8,7 @@
 #ifndef GLCONTEXT_H_
 #define GLCONTEXT_H_
 
+#include "dio/memory.h"
 #include <GLFW/glfw3.h>
 #include <OpenGL/gl3.h>
 #include <cuda_gl_interop.h>
@@ -32,6 +33,7 @@ public:
 	GLuint uvbuffer;
 	GLuint pixelBufferID;
 	GLuint VertexArrayID;
+	Memory<int> *objects_to_draw;
 	static const GLfloat g_vertex_buffer_data[18];
 	static const GLfloat g_uv_buffer_data[18];
 
@@ -174,18 +176,19 @@ void Context::start_render_loop(){
 void Context::draw(){
 
 	//Do Cuda stuff:
+	if(objects_to_draw){
+		uint *dptr;
+		checkCudaErrors(cudaGraphicsMapResources(1, &frame_texture_cuda_resource, 0));
+		size_t num_bytes;
+		checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &num_bytes, frame_texture_cuda_resource));
+		dim3  grid(36,36,1);
+		dim3  threads(30, 20, 1);
+		k_render_to_buffer<<< grid, threads >>>(dptr,objects_to_draw->d_data,objects_to_draw->size);
+		// unmap buffer object
+		checkCudaErrors(cudaGraphicsUnmapResources(1, &frame_texture_cuda_resource, 0));
 
-	uint *dptr;
-	checkCudaErrors(cudaGraphicsMapResources(1, &frame_texture_cuda_resource, 0));
-	size_t num_bytes;
-	checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &num_bytes, frame_texture_cuda_resource));
-	dim3  grid(1440,1,1);
-	dim3  threads(540, 1, 1);
-	k_render_to_buffer<<< grid, threads >>>(dptr);
-	// unmap buffer object
-	checkCudaErrors(cudaGraphicsUnmapResources(1, &frame_texture_cuda_resource, 0));
-
-	cudaStreamSynchronize(0);
+		cudaStreamSynchronize(0);
+	}
 	//end cuda
 
 	glUseProgram(shader_program_id);

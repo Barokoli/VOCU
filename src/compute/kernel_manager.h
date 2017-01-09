@@ -64,6 +64,7 @@ void KernelManager::init_cuda_device(int argc, char **argv){
 
 	//cudaGLGetDevices(&devID,&props);
 	cudaChooseDevice(&devID,&props);
+	cudaDeviceReset();
 }
 
 #endif /* KERNEL_MANAGER_H_ */

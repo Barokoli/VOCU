@@ -9,6 +9,7 @@
 #define DIO_H_
 
 #include <iostream>
+#include <stdlib.h>
 #include <thread>
 #include <mutex>
 #include <queue>
@@ -26,6 +27,7 @@ public:
 	Task * enqueue(function<void()>);
 	Memory<float> random_numbers;
 	Memory<int> tmp_bulkstorage; //32 -> 64 bit pointer?
+	Memory<int> tmp_scan_storage;
 
 	void rng(int,unsigned long long seed);
 	void work_on_queue(int me);
@@ -52,8 +54,9 @@ private:
 };
 
 void DataIO::init_dio(KernelManager k_manager){
-	rng(2097152,4242ULL);
+	rng(262144,time(0));
 	new_cuda_mem<int>(&tmp_bulkstorage,rec_chunk_size_cubed(k_manager));
+	new_cuda_mem<int>(&tmp_scan_storage,rec_chunk_size_cubed(k_manager));
 }
 
 void DataIO::work_on_queue(int me){
@@ -128,6 +131,7 @@ void DataIO::rng(int size, unsigned long long seed){
 void DataIO::free(){
 	random_numbers.mem_free();
 	tmp_bulkstorage.mem_free();
+	tmp_scan_storage.mem_free();
 }
 
 #endif /* DIO_H_ */
