@@ -52,16 +52,6 @@ void KernelManager::init_cuda_device(int argc, char **argv){
 
 	max_threads = props.maxThreadsPerBlock;
 
-	unsigned int glDeviceCount = 16;
-	int glDevices[16];
-
-	cudaGLGetDevices(&glDeviceCount, glDevices, glDeviceCount, cudaGLDeviceListAll);
-	printf("OpenGL is using CUDA device(s): ");
-	for (unsigned int i = 0; i < glDeviceCount; ++i) {
-		printf("%s%d", i == 0 ? "" : ", ", glDevices[i]);
-	}
-	printf("\n");
-
 	//cudaGLGetDevices(&devID,&props);
 	cudaChooseDevice(&devID,&props);
 	cudaDeviceReset();

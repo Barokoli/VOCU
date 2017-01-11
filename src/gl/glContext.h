@@ -15,9 +15,11 @@
 #include "shader/load_shader.h"
 #include "extern/helper_cuda.h"
 #include "renderer.cuh"
+#include "gl/camera.h"
 
 void error_callback(int error, const char* description);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void key_poll_callback(GLFWwindow* window);
 
 texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> frame_texture_cuda_ref;
 
@@ -36,14 +38,18 @@ public:
 	Memory<int> *objects_to_draw;
 	static const GLfloat g_vertex_buffer_data[18];
 	static const GLfloat g_uv_buffer_data[18];
+	double mouse_pos_x, mouse_pos_y;
+
+	Camera *active_camera;
 
 	struct cudaGraphicsResource *frame_texture_cuda_resource;
 
-	bool init_context(int x,int y, void (*f)(int));
+	bool init_context(int x,int y, void (*f)(int,int), void (*f2)(GLFWwindow*),Camera *cam);
 	bool terminate_context();
 	void start_render_loop();
 	void draw();
-	void (*input_handle)(int);
+	void (*input_handle)(int,int);
+	void (*input_poll_handle)(GLFWwindow *window);
 };
 
 const GLfloat Context::g_vertex_buffer_data[18] = {
@@ -66,10 +72,13 @@ const GLfloat Context::g_uv_buffer_data[18] = {
 		1.0f,  1.0f
 	};
 
-bool Context::init_context(int x,int y, void (*f)(int)){
+bool Context::init_context(int x,int y, void (*f)(int,int),void (*f2)(GLFWwindow*),Camera *cam){
 	width = x;
 	height = y;
 	input_handle = f;
+	input_poll_handle = f2;
+
+	active_camera = cam;
 
 	if (!glfwInit())
 	{
@@ -175,6 +184,8 @@ void Context::start_render_loop(){
 
 void Context::draw(){
 
+	glfwGetCursorPos(window, &mouse_pos_x, &mouse_pos_y);
+	key_poll_callback(window);
 	//Do Cuda stuff:
 	if(objects_to_draw){
 		uint *dptr;
@@ -183,7 +194,9 @@ void Context::draw(){
 		checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&dptr, &num_bytes, frame_texture_cuda_resource));
 		dim3  grid(36,36,1);
 		dim3  threads(30, 20, 1);
-		k_render_to_buffer<<< grid, threads >>>(dptr,objects_to_draw->d_data,objects_to_draw->size);
+		//active_camera->kernelParams.memcpy_htd();
+		//objects_to_draw->memcpy_htd();
+		k_render_to_buffer<<< grid, threads >>>(dptr,objects_to_draw->d_data,objects_to_draw->size,active_camera->kernelParams.d_data);
 		// unmap buffer object
 		checkCudaErrors(cudaGraphicsUnmapResources(1, &frame_texture_cuda_resource, 0));
 
@@ -248,8 +261,13 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     }
 
     if (action == GLFW_PRESS){
-    	context->input_handle(key);
+    	context->input_handle(key,action);
     }
+}
+void key_poll_callback(GLFWwindow* window)
+{
+	Context * context = reinterpret_cast<Context *>(glfwGetWindowUserPointer(window));
+	context->input_poll_handle(window);
 }
 
 #endif /* GLCONTEXT_H_ */

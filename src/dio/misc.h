@@ -30,4 +30,8 @@ int rec_chunk_size_cubed(KernelManager k_manager){
 	return toCube(rec_chunk_size(),k_manager);
 }
 
+__device__ static uint to_uint(char4 col){
+	return ((col.z & 0xff) << 16) + ((col.y & 0xff) << 8) + (col.x & 0xff);
+}
+
 #endif /* MISC_H_ */

@@ -93,7 +93,7 @@ __global__ void k_octree_fill_blocks(int *bulk_storage, float *rn,int noise_coun
 //0-127 = leer | 128-255 = voll
 __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noise_size){
 	//return x;
-	//return z > 127 ? 0 : 255;
+	//return z > 120 ? 0 : 255;
 	int xf,yf,zf,xpf,ypf,zpf,nSsqr;
     nSsqr = noise_size*noise_size;
     float xv,yv,zv;
@@ -133,15 +133,15 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
 		//Trilinear Interpolation
 		value += noise_values[noiseLayer*2+1]*(
 						(1.0f-zv)*(
-							yv*(xv*b+(1.0f-xv)*a)
+							(1.0f-yv)*(xv*b+(1.0f-xv)*a)
 							+
-							(1.0f-yv)*(xv*d+(1.0f-xv)*c)
+							(yv)*(xv*d+(1.0f-xv)*c)
 						)
 						+
 						zv*(
-							yv*(xv*f+(1.0f-xv)*e)
+							(1.0f-yv)*(xv*f+(1.0f-xv)*e)
 							+
-							(1.0f-yv)*(xv*h+(1.0f-xv)*g)
+							(yv)*(xv*h+(1.0f-xv)*g)
 						)
 					);
 
@@ -152,8 +152,8 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
     }
     value += 1.0f-((float)z/128.0f);
     //Clamping
-    value = value >= 0.5f?1.0f:value;
-    value = value < 0.5f?0.0f:value;
+    value = value >= 0.506f?1.0f:value;
+    value = value < 0.494f?0.0f:value;
 
     return (int)(127.5f*(value*2.0f));
 }
