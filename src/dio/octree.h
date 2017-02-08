@@ -42,6 +42,9 @@ Memory<int>* Octree::init_from_random(DataIO *dio, int max_threads_per_block){
 		threads = level >= 8? dim3(8,8,8) : dim3(threads.x>>1,threads.y>>1,threads.z>>1);
 		grid = level >= 8? dim3(level>>3,level>>3,level>>3) : dim3(1,1,1);
 		k_build_tree<<< grid, threads >>>(dio->tmp_bulkstorage.d_data,Off);
+		if(cudaSuccess != cudaGetLastError()){
+				std::cout << "Failed kernel." << std::endl;
+			}
 		Off += level*level*level*8;
 	}
 

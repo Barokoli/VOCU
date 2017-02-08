@@ -10,6 +10,7 @@
 
 #define CHUNK_SIZE 256
 #define CHUNK_SIZE_3 CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE
+#define MAX_RAY_STEPS 256
 
 #include <math.h>
 #include "compute/kernel_manager.h"

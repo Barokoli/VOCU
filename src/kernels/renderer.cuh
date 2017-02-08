@@ -11,7 +11,7 @@
 #include "dio/misc.h"
 #include "extern/helper_math.h"
 
-__device__ static uint EvaluateBlock(int relX,int relY,int relZ,int *chunk,int lastI,float *blockSize);
+__device__ static int EvaluateBlock(int relX,int relY,int relZ,int *chunk,int lastI,float *blockSize);
 __device__ static uint to_uint(char4 col);
 __device__ static float4 cast_ray(float4 origin, float4 dir, int *chunk,int chunkL);
 
@@ -32,13 +32,15 @@ __global__ void k_render_to_buffer(uint *buffer,int *octree,int octree_size,floa
 	float4 camera_ray_dir = screen_pos + cam_right * (float)u + cam_up * (float)v;
 
 	//char4 color = make_char4((char)(cam_pos.x*255),(char)(cam_pos.y*255),(char)(camera_ray_dir.z*255.0f),0);
+	camera_ray_dir = normalize(camera_ray_dir);
 
-	float4 ray = cast_ray(cam_pos,camera_ray_dir,octree,octree_size);
+	float4 ray = cast_ray(cam_pos,camera_ray_dir,octree,octree_size);//make_float4(1,camera_ray_dir.x*255,camera_ray_dir.y*255,camera_ray_dir.z*255);//
 	//float4 ray;
 	if(ray.x < 0){
 		ray.x = 0;
 	}
 	char4 color = make_char4((char)ray.x,(char)ray.x,(char)ray.x,0);
+	//char4 color = make_char4((char)ray.y*100,(char)ray.z*100,(char)ray.w*100,0);
 
 	float tmp = CHUNK_SIZE;
 
@@ -56,89 +58,76 @@ __global__ void k_render_to_buffer(uint *buffer,int *octree,int octree_size,floa
 //Returns Ray information: Length, surface normal
 __device__ static float4 cast_ray(float4 origin, float4 dir, int *chunk,int chunkL){
 	float depth = 0;
-	float rx,ry,rz;//,cx,cy,cz;
 	float mag;
 	int4 blockOrigin = make_int4((int)origin.x,(int)origin.y,(int)origin.z,1);
-	float4 lastNormal;// = (float4)(0.0f,0.0f,0.0f,0.0f);
+	float4 lastNormal = make_float4(0.0f,0.0f,0.0f,0.0f);
 	float currBlockSize = (float)(CHUNK_SIZE>>1);//TODO: Hardcoded BlockSize
-	while(EvaluateBlock((int)blockOrigin.x,(int)blockOrigin.y,(int)blockOrigin.z,chunk,chunkL,&currBlockSize)<127){
-		lastNormal = make_float4(0,0,0,0);
-		rx = dir.x!=0.0f? (float)(
-								   dir.x>0.0f?
-								   ( -(float)fracf(origin.x) + (currBlockSize)-(blockOrigin.x%(int)currBlockSize) )/(dir.x):
-								   (fracf(origin.x) == 0.0f? -currBlockSize/dir.x:(float)-(fracf(origin.x)+(blockOrigin.x%(int)currBlockSize))/(dir.x))
 
-								   )
-							:100.0f;
-				ry = dir.y!=0.0f? (float)(
-								   dir.y>0.0f?
-										 (-(float)fracf(origin.y)+(currBlockSize)-(blockOrigin.y%(int)currBlockSize))/(dir.y):
-										 (fracf(origin.y) == 0.0f? -currBlockSize/dir.y:(float)-(fracf(origin.y)+(blockOrigin.y%(int)currBlockSize))/(dir.y))
-								   )
-							:100.0f;
-				rz = dir.z!=0.0f? (float)(
-								   dir.z>0.0f?
-										 (-(float)fracf(origin.z)+(currBlockSize)-(blockOrigin.z%(int)currBlockSize))/(dir.z):
-										 (fracf(origin.z) == 0.0f? -currBlockSize/dir.z:(float)-(fracf(origin.z)+(blockOrigin.z%(int)currBlockSize))/(dir.z))
-								   )
-							:100.0f;
+	float4 deltaDist;
+	deltaDist.x = 1.0f/fabs(dir.x);
+	deltaDist.y = 1.0f/fabs(dir.y);
+	deltaDist.z = 1.0f/fabs(dir.z);
 
-		rx = rx>0.0f?rx:10000.0f;
-		ry = ry>0.0f?ry:10000.0f;
-		rz = rz>0.0f?rz:10000.0f;
+	float4 sideDist;
+	sideDist.x = (copysignf((float)blockOrigin.x-(float)origin.x,dir.x) + copysignf(0.5f,dir.x) + 0.5f)*deltaDist.x;
+	sideDist.y = (copysignf((float)blockOrigin.y-(float)origin.y,dir.y) + copysignf(0.5f,dir.y) + 0.5f)*deltaDist.y;
+	sideDist.z = (copysignf((float)blockOrigin.z-(float)origin.z,dir.z) + copysignf(0.5f,dir.z) + 0.5f)*deltaDist.z;
 
-		mag = rx<ry?(rx<rz?rx:rz):(ry<rz?ry:rz);
-		origin = origin+dir*mag;
-		depth += mag;
+	float4 stepSize = make_float4(1.0f,1.0f,1.0f,0);
 
-		if(rx<ry){
-		  if(rx < rz){
-			  //origin = origin+dir*rx;
-			  blockOrigin = make_int4((dir.x > 0.0f ? floor(origin.x-0.5f)+1 : floor(origin.x+0.5f)-1),floor(origin.y),floor(origin.z),0);
-			  lastNormal.x += dir.x > 0.0f? -1.0f:1.0f;
-			  //depth += rx;
-		  }else{
-			  //origin = origin+dir*rz;
-			  blockOrigin = make_int4(floor(origin.x),floor(origin.y),(dir.z > 0.0f ? floor(origin.z-0.5f)+1 : floor(origin.z+0.5f)-1),0);
-			  lastNormal.z += dir.z > 0.0f? -1.0f:1.0f;
-			  //depth += rz;
-		  }
-		}else{
-		  if(ry<rz){
-			  //origin = origin+dir*ry;
-			  blockOrigin = make_int4(floor(origin.x),(dir.y > 0.0f ? floor(origin.y-0.5f)+1 : floor(origin.y+0.5f)-1),floor(origin.z),0);
-			  lastNormal.y += dir.y > 0.0f? -1.0f:1.0f;
-			  //depth += ry;
-		  }else{
-			  //origin = origin+dir*rz;
-			  blockOrigin = make_int4(floor(origin.x),floor(origin.y),(dir.z > 0.0f ? floor(origin.z-0.5f)+1 : floor(origin.z+0.5f)-1),0);
-			  lastNormal.z += dir.z > 0.0f? -1.0f:1.0f;
-			  //depth += rz;
-		  }
-		}
+	int3 b1,b2,mask;
+
+	for (int i = 0; i < MAX_RAY_STEPS; i++) {
+		if (EvaluateBlock((int)blockOrigin.x,(int)blockOrigin.y,(int)blockOrigin.z,chunk,chunkL,&currBlockSize)>127) continue;
+
+		b1.x = sideDist.x < sideDist.y;
+		b1.y = sideDist.y < sideDist.z;
+		b1.z = sideDist.z < sideDist.x;
+
+		b2.x = sideDist.x <= sideDist.z;
+		b2.y = sideDist.y <= sideDist.x;
+		b2.z = sideDist.z <= sideDist.y;
+
+		mask.x = b1.x && b2.x;
+		mask.y = b1.y && b2.y;
+		mask.z = b1.z && b2.z;
+
+		stepSize.x = currBlockSize-fmod((float)blockOrigin.x,currBlockSize)+1;
+		stepSize.y = currBlockSize-fmod((float)blockOrigin.y,currBlockSize)+1;
+		stepSize.z = currBlockSize-fmod((float)blockOrigin.z,currBlockSize)+1;
+
+		sideDist.x += mask.x * deltaDist.x;// * stepSize.x;
+		sideDist.y += mask.y * deltaDist.y;// * stepSize.y;
+		sideDist.z += mask.z * deltaDist.z;// * stepSize.z;
+
+		blockOrigin.x += copysignf(mask.x,dir.x);// * (int)stepSize.x;
+		blockOrigin.y += copysignf(mask.y,dir.y);// * (int)stepSize.y;
+		blockOrigin.z += copysignf(mask.z,dir.z);// * (int)stepSize.z;
+
+		depth += 1;//length(make_float3(mask.x * deltaDist.x,mask.y * deltaDist.y,mask.z * deltaDist.z));
 
 		if(!(blockOrigin.x > 0 && blockOrigin.x < CHUNK_SIZE &&
 			  blockOrigin.y > 0 && blockOrigin.y < CHUNK_SIZE &&
 			  blockOrigin.z > 0 && blockOrigin.z < CHUNK_SIZE)){
-		  return make_float4(-1,dir.x,dir.y,dir.z);
+		  return make_float4(-1,mask.x,mask.y,mask.z);
 		}
 	}
 
-	return make_float4(depth,lastNormal.x,lastNormal.y,lastNormal.z);
+	return make_float4(depth,mask.x,mask.y,mask.z);
 }
 
-__device__ static uint EvaluateBlock(int relX,int relY,int relZ,int *chunk,int lastI,float *blockSize){
+__device__ static int EvaluateBlock(int relX,int relY,int relZ,int *chunk,int lastI,float *blockSize){
     float4 bPos = make_float4(0,0,0,0);
-    uint block = chunk[lastI-1];
+    int block = chunk[lastI-1];
 
-    uint off = 0;
+    int off = 0;
 
-    uint lvl = CHUNK_SIZE>>1;
+    int lvl = CHUNK_SIZE>>1;
 
     while((block&0xC0000000) != 0xC0000000){
-        off |= (uint)(relX>=(bPos.x+lvl)? 1:0);
-        off |= (uint)(relY>=(bPos.y+lvl)? 2:0);
-        off |= (uint)(relZ>=(bPos.z+lvl)? 4:0);
+        off |= (int)(relX>=(bPos.x+lvl)? 1:0);
+        off |= (int)(relY>=(bPos.y+lvl)? 2:0);
+        off |= (int)(relZ>=(bPos.z+lvl)? 4:0);
         block = chunk[(block&0x3FFFFFFF)+off];
         bPos = make_float4((off&1)*lvl+bPos.x,((off&2)>>1)*lvl+bPos.y,((off&4)>>2)*lvl+bPos.z,0.0);
         *blockSize = (float)(lvl);

@@ -119,6 +119,7 @@ void DataIO::rng(int size, unsigned long long seed){
 	cudaDeviceSynchronize();
 
 	random_numbers.memcpy_dth();
+	cout << "random number: " << random_numbers.h_data[0] << endl;
 
 	cudaDeviceSynchronize();
 

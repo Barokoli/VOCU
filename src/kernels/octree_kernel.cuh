@@ -150,7 +150,7 @@ __device__ int GetBlock(int x, int y, int z, float* rn, int noise_count, int noi
 		//value = value*0.1f;//((float)((float)(127-z)/64.0f)-1.0f);//+value*0.1;
 		//value = a;
     }
-    value += 1.0f-((float)z/128.0f);
+    value += 1.0f-((float)z/(128.0f));
     //Clamping
     value = value >= 0.506f?1.0f:value;
     value = value < 0.494f?0.0f:value;

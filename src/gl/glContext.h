@@ -196,7 +196,16 @@ void Context::draw(){
 		dim3  threads(30, 20, 1);
 		//active_camera->kernelParams.memcpy_htd();
 		//objects_to_draw->memcpy_htd();
+		cudaEvent_t start, stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		cudaEventRecord(start);
 		k_render_to_buffer<<< grid, threads >>>(dptr,objects_to_draw->d_data,objects_to_draw->size,active_camera->kernelParams.d_data);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		float milliseconds = 0;
+		cudaEventElapsedTime(&milliseconds, start, stop);
+		std::cout << "cuda ms: " << milliseconds << std::endl;
 		// unmap buffer object
 		checkCudaErrors(cudaGraphicsUnmapResources(1, &frame_texture_cuda_resource, 0));
 

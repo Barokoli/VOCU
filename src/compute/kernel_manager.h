@@ -21,6 +21,7 @@ public:
 };
 
 void KernelManager::init_cuda_device(int argc, char **argv){
+	cudaDeviceReset();
 	/*http://stackoverflow.com/questions/5689028/how-to-get-card-specs-programatically-in-cuda*/
 	const int kb = 1024;
 	const int mb = kb * kb;
